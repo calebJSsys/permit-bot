@@ -133,6 +133,9 @@
   .modal-btn { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 13px; font-weight: 500; }
   .modal-btn:hover { border-color: var(--muted); }
 
+  .quick-btn { width: 100%; padding: 9px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 12px; font-weight: 500; text-align: left; transition: border-color 0.15s, background 0.15s; }
+  .quick-btn:hover { border-color: var(--accent); background: #2a2400; color: var(--accent); }
+
   .api-section { background: var(--surface); border-top: 1px solid var(--border); padding: 16px 24px; }
   .api-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .api-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
@@ -228,6 +231,16 @@
       </div>
       <button class="btn btn-primary" onclick="fetchPermits()">Search Permits</button>
       <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Quick Filters</h3>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button class="quick-btn" onclick="applyQuickFilter('commercial')">🏗️ Commercial $100K+</button>
+        <button class="quick-btn" onclick="applyQuickFilter('large')">💰 Large Projects $500K+</button>
+        <button class="quick-btn" onclick="applyQuickFilter('new_construction')">🏢 New Construction</button>
+        <button class="quick-btn" onclick="applyQuickFilter('high_risk')">🔴 High Risk Areas</button>
+      </div>
     </div>
 
     <div class="sidebar-section">
@@ -473,7 +486,28 @@
   function closeModalDirect() { document.getElementById('modal').classList.remove('open'); document.body.style.overflow = ''; }
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModalDirect(); });
 
-  function resetFilters() {
+  function applyQuickFilter(preset) {
+    resetFiltersState();
+    if (preset === 'commercial') {
+      document.getElementById('filter-value').value = '100000';
+      document.getElementById('filter-type').value = 'commercial';
+      document.getElementById('filter-days').value = '30';
+    } else if (preset === 'large') {
+      document.getElementById('filter-value').value = '500000';
+      document.getElementById('filter-days').value = '60';
+    } else if (preset === 'new_construction') {
+      document.getElementById('filter-type').value = 'new construction';
+      document.getElementById('filter-days').value = '30';
+    } else if (preset === 'high_risk') {
+      document.querySelectorAll('.risk-pill').forEach(p => p.classList.remove('active'));
+      document.querySelector('.risk-pill[data-risk="high"]').classList.add('active');
+      currentRisk = 'high';
+      document.getElementById('filter-days').value = '30';
+    }
+    fetchPermits();
+  }
+
+  function resetFiltersState() {
     document.getElementById('filter-type').value = '';
     document.getElementById('filter-value').value = '';
     document.getElementById('filter-days').value = '30';
@@ -484,6 +518,10 @@
     document.querySelectorAll('.risk-pill').forEach(p => p.classList.remove('active'));
     document.querySelector('.risk-pill[data-risk="all"]').classList.add('active');
     currentCity = ''; currentRisk = '';
+  }
+
+  function resetFilters() {
+    resetFiltersState();
     fetchPermits();
   }
 

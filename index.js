@@ -160,12 +160,125 @@ const SOCRATA_CITIES = {
       description: (r.use || '').substring(0, 500),
     }),
   },
-  // ── CITIES NEEDING ARCGIS FETCHER (not Socrata) ──
-  // houston:    cohgis-mycity.opendata.arcgis.com
-  // nashville:  data.nashville.gov → ArcGIS Hub
-  // phoenix:    opendata.phoenix.gov → ArcGIS Hub
-  // charlotte:  data.charlottenc.gov → ArcGIS Hub
 };
+
+// ─── ArcGIS City Data Sources ─────────────────────────────────────
+// Most southern US cities (Houston, Nashville, Phoenix, Charlotte, Atlanta)
+// use ArcGIS Hub instead of Socrata.
+//
+// To add a city:
+//   1. Go to the city's open data portal (e.g. cohgis-mycity.opendata.arcgis.com)
+//   2. Search "building permits", open the dataset
+//   3. Click "I want to use this" → copy the FeatureServer URL
+//      e.g. https://services1.arcgis.com/[ORG]/arcgis/rest/services/[NAME]/FeatureServer
+//   4. Test: curl "[url]/0/query?where=1=1&outFields=*&resultRecordCount=1&f=json"
+//   5. Add an entry below matching the field names from the response
+//
+// ArcGIS date fields are Unix timestamps (ms) — use: new Date(r.IssueDate).toISOString().split('T')[0]
+const ARCGIS_CITIES = {
+  // houston: {
+  //   url: 'https://[VERIFY-AT-cohgis-mycity.opendata.arcgis.com]/FeatureServer/0/query',
+  //   orderBy: 'IssueDate DESC',
+  //   normalize: (r) => ({
+  //     id: `houston-${r.PermitNumber || Math.random()}`,
+  //     city: 'houston',
+  //     address: r.SiteAddress || r.Address || '',
+  //     permit_type: r.PermitType || r.WorkType || '',
+  //     estimated_value: parseFloat(r.DeclaredValuation || r.ProjectCost) || 0,
+  //     contractor_name: r.ContractorName || r.Contractor || '',
+  //     permit_date: r.IssueDate ? new Date(r.IssueDate).toISOString().split('T')[0] : '',
+  //     status: r.Status || 'issued',
+  //     zip_code: r.ZipCode || r.Zip || '',
+  //     description: r.ProjectDescription || r.Description || '',
+  //   }),
+  // },
+  // nashville: {
+  //   url: 'https://[VERIFY-AT-data.nashville.gov]/FeatureServer/0/query',
+  //   orderBy: 'date_issued DESC',
+  //   normalize: (r) => ({
+  //     id: `nashville-${r.permit_number || Math.random()}`,
+  //     city: 'nashville',
+  //     address: r.mapped_location_address || r.address || '',
+  //     permit_type: r.permit_type || r.permit_subtype || '',
+  //     estimated_value: parseFloat(r.const_cost) || 0,
+  //     contractor_name: r.contractor_name || '',
+  //     permit_date: r.date_issued ? new Date(r.date_issued).toISOString().split('T')[0] : '',
+  //     status: r.status || 'issued',
+  //     zip_code: r.zip || '',
+  //     description: r.description || '',
+  //   }),
+  // },
+  // phoenix: {
+  //   url: 'https://[VERIFY-AT-opendata.phoenix.gov]/FeatureServer/0/query',
+  //   orderBy: 'AppliedDate DESC',
+  //   normalize: (r) => ({
+  //     id: `phoenix-${r.PermitNum || Math.random()}`,
+  //     city: 'phoenix',
+  //     address: r.OriginalAddress1 || r.Address || '',
+  //     permit_type: r.PermitTypeDesc || r.PermitType || '',
+  //     estimated_value: parseFloat(r.EstProjectCost) || 0,
+  //     contractor_name: r.ContractorCompanyName || '',
+  //     permit_date: r.IssuedDate ? new Date(r.IssuedDate).toISOString().split('T')[0] : '',
+  //     status: r.StatusCurrent || 'issued',
+  //     zip_code: r.OriginalZip || '',
+  //     description: r.Description || '',
+  //   }),
+  // },
+  // charlotte: {
+  //   url: 'https://[VERIFY-AT-data.charlottenc.gov]/FeatureServer/0/query',
+  //   orderBy: 'ISSUED_DATE DESC',
+  //   normalize: (r) => ({
+  //     id: `charlotte-${r.PERMIT_NUM || Math.random()}`,
+  //     city: 'charlotte',
+  //     address: r.SITE_ADDRESS || '',
+  //     permit_type: r.PERMIT_TYPE || r.WORK_TYPE || '',
+  //     estimated_value: parseFloat(r.COST) || 0,
+  //     contractor_name: r.CONTRACTOR || '',
+  //     permit_date: r.ISSUED_DATE ? new Date(r.ISSUED_DATE).toISOString().split('T')[0] : '',
+  //     status: r.STATUS || 'issued',
+  //     zip_code: r.ZIP || '',
+  //     description: r.DESCRIPTION || '',
+  //   }),
+  // },
+};
+
+async function fetchArcGIS(cityKey) {
+  const city = ARCGIS_CITIES[cityKey];
+  try {
+    const res = await axios.get(city.url, {
+      params: {
+        where: city.where || '1=1',
+        outFields: '*',
+        resultRecordCount: city.limit || 1000,
+        orderByFields: city.orderBy || 'IssueDate DESC',
+        f: 'json',
+      },
+      timeout: 25000,
+    });
+    const features = res.data.features || [];
+    if (res.data.error) throw new Error(JSON.stringify(res.data.error));
+    const insert = db.prepare(`
+      INSERT OR REPLACE INTO permits
+        (id, city, address, permit_type, estimated_value, contractor_name, permit_date, status, zip_code, description, fetched_at)
+      VALUES (@id, @city, @address, @permit_type, @estimated_value, @contractor_name, @permit_date, @status, @zip_code, @description, datetime('now'))
+    `);
+    const count = db.transaction((records) => {
+      let n = 0;
+      for (const feature of records) {
+        try {
+          const rec = city.normalize(feature.attributes);
+          if (rec.id && rec.address) { insert.run(rec); n++; }
+        } catch(_) {}
+      }
+      return n;
+    })(features);
+    console.log(`[${cityKey}] ${count} ArcGIS permits stored`);
+    return { city: cityKey, inserted: count };
+  } catch (err) {
+    console.error(`[${cityKey}] ArcGIS error:`, err.message);
+    return { city: cityKey, inserted: 0 };
+  }
+}
 
 // Philadelphia uses CartoDB SQL API instead of Socrata
 async function fetchPhiladelphia() {
@@ -234,6 +347,7 @@ async function fetchAll() {
   console.log('[fetch] Refreshing all cities...');
   await Promise.allSettled([
     ...Object.keys(SOCRATA_CITIES).map(fetchCity),
+    ...Object.keys(ARCGIS_CITIES).map(fetchArcGIS),
     fetchPhiladelphia(),
   ]);
   await fetchRiskScores();
@@ -293,6 +407,10 @@ app.listen(PORT, '0.0.0.0', () => {
 
 // Permits refresh daily at 2am, risk scores refresh weekly Sunday 3am
 cron.schedule('0 2 * * *', async () => {
-  await Promise.allSettled([...Object.keys(SOCRATA_CITIES).map(fetchCity), fetchPhiladelphia()]);
+  await Promise.allSettled([
+    ...Object.keys(SOCRATA_CITIES).map(fetchCity),
+    ...Object.keys(ARCGIS_CITIES).map(fetchArcGIS),
+    fetchPhiladelphia(),
+  ]);
 });
 cron.schedule('0 3 * * 0', fetchRiskScores);
