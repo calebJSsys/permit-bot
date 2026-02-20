@@ -1,0 +1,8 @@
+node_modules/
+permits.db
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+npm-debug.log*
