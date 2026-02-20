@@ -126,8 +126,45 @@ const SOCRATA_CITIES = {
       description: r.description || '',
     }),
   },
-  // ── ADD MORE CITIES BELOW ──
-  // See README.md → "Adding New Cities" for Socrata and ArcGIS patterns
+  kansas_city: {
+    // data.kcmo.org — CPD Permits dataset, verified 2025
+    url: 'https://data.kcmo.org/resource/ntw8-aacc.json',
+    order: 'issueddate DESC',
+    normalize: (r) => ({
+      id: `kc-${r.permitnum || Math.random()}`,
+      city: 'kansas_city',
+      address: r.originaladdress1 || '',
+      permit_type: r.permittypedesc || r.permittype || '',
+      estimated_value: parseFloat(r.estprojectcost) || 0,
+      contractor_name: r.contractorcompanyname || '',
+      permit_date: r.issueddate ? r.issueddate.split('T')[0] : '',
+      status: r.statuscurrent || 'issued',
+      zip_code: r.originalzip || '',
+      description: r.description || '',
+    }),
+  },
+  san_diego: {
+    // San Diego County open data — publicly accessible Socrata portal
+    url: 'https://internal-sandiegocounty.data.socrata.com/resource/dyzh-7eat.json',
+    order: 'open_date DESC',
+    normalize: (r) => ({
+      id: `sandiego-${r.record_id || Math.random()}`,
+      city: 'san_diego',
+      address: r.street_address || '',
+      permit_type: r.record_category || r.record_type || '',
+      estimated_value: 0,
+      contractor_name: r.contractor_name || '',
+      permit_date: r.open_date ? r.open_date.split('T')[0] : '',
+      status: r.record_status || 'issued',
+      zip_code: r.zip_code || '',
+      description: (r.use || '').substring(0, 500),
+    }),
+  },
+  // ── CITIES NEEDING ARCGIS FETCHER (not Socrata) ──
+  // houston:    cohgis-mycity.opendata.arcgis.com
+  // nashville:  data.nashville.gov → ArcGIS Hub
+  // phoenix:    opendata.phoenix.gov → ArcGIS Hub
+  // charlotte:  data.charlottenc.gov → ArcGIS Hub
 };
 
 // Philadelphia uses CartoDB SQL API instead of Socrata
@@ -171,7 +208,7 @@ async function fetchCity(cityKey) {
   const city = SOCRATA_CITIES[cityKey];
   try {
     const res = await axios.get(city.url, {
-      params: { $limit: 1000, $order: ':created_at DESC' }, timeout: 20000,
+      params: { $limit: 1000, $order: city.order || ':created_at DESC' }, timeout: 20000,
     });
     const insert = db.prepare(`
       INSERT OR REPLACE INTO permits

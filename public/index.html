@@ -79,6 +79,8 @@
   .city-austin { background: #3b2a1a; color: #fb923c; }
   .city-san_francisco { background: #1a2e3a; color: #38bdf8; }
   .city-philadelphia { background: #2d1f3a; color: #c084fc; }
+  .city-kansas_city { background: #1e3a1e; color: #4ade80; }
+  .city-san_diego { background: #1a2e2e; color: #22d3ee; }
 
   .value-cell { font-weight: 600; color: var(--green); }
   .value-zero { color: var(--muted); }
@@ -186,6 +188,8 @@
         <div class="city-pills">
           <div class="pill active" data-city="">All Cities</div>
           <div class="pill" data-city="austin">Austin</div>
+          <div class="pill" data-city="kansas_city">Kansas City</div>
+          <div class="pill" data-city="san_diego">San Diego</div>
           <div class="pill" data-city="san_francisco">San Francisco</div>
           <div class="pill" data-city="philadelphia">Philadelphia</div>
         </div>
@@ -271,7 +275,7 @@
     </div>
     <div class="api-card">
       <h4>🏙️ Expanding Coverage</h4>
-      <p>Austin TX, San Francisco CA, Philadelphia PA active. Houston, Dallas, Atlanta coming soon.</p>
+      <p>Austin TX, Kansas City MO, San Diego CA, San Francisco CA, Philadelphia PA active. Houston, Nashville coming soon.</p>
       <div class="api-endpoint">/permits?risk=high&days=30&limit=500</div>
     </div>
   </div>
@@ -293,8 +297,8 @@
   let currentRisk = '';
   let allResults = [];
 
-  const cityLabels = { austin: 'Austin', san_francisco: 'San Francisco', philadelphia: 'Philadelphia' };
-  const cityClass = { austin: 'city-austin', san_francisco: 'city-san_francisco', philadelphia: 'city-philadelphia' };
+  const cityLabels = { austin: 'Austin', san_francisco: 'San Francisco', philadelphia: 'Philadelphia', kansas_city: 'Kansas City', san_diego: 'San Diego' };
+  const cityClass = { austin: 'city-austin', san_francisco: 'city-san_francisco', philadelphia: 'city-philadelphia', kansas_city: 'city-kansas_city', san_diego: 'city-san_diego' };
 
   document.querySelectorAll('.pill[data-city]').forEach(p => p.addEventListener('click', () => {
     document.querySelectorAll('.pill[data-city]').forEach(x => x.classList.remove('active'));
