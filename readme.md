@@ -10,7 +10,7 @@ Scrapes public city permit databases, scores each permit's location by crime and
 
 ## What It Does
 
-- Pulls active building permits from city open data APIs (Socrata, CartoDB) daily
+- Pulls active building permits from city open data APIs (Socrata, ArcGIS FeatureServer, CartoDB) daily
 - Scores each ZIP code by **crime risk** (Census poverty rate) and **fire risk** (median building age)
 - Serves a dark-mode web UI with filters, risk badges, clickable permit details, and CSV export
 - Exposes a REST API for integration with CRMs or sales tools
@@ -114,8 +114,10 @@ Server status, permit count, scored ZIP count, uptime.
 
 | City | State | API Type | Notes |
 |------|-------|----------|-------|
-| Austin | TX | Socrata | Full data |
-| San Francisco | CA | Socrata | Full data |
+| Austin | TX | Socrata | Full data with estimated value |
+| Kansas City | MO | Socrata | data.kcmo.org — verified 2025 data |
+| San Diego County | CA | Socrata | internal-sandiegocounty.data.socrata.com |
+| San Francisco | CA | Socrata | Full data with estimated value |
 | Philadelphia | PA | CartoDB | No value field |
 
 ### Adding New Cities
@@ -146,45 +148,60 @@ Find the resource ID: go to `data.[city].gov`, search "building permits", copy t
 
 #### ArcGIS (Houston, Phoenix, Nashville, Atlanta, etc.)
 
-Most southern cities use ArcGIS instead of Socrata. Fetch pattern:
+Most southern cities use ArcGIS Hub instead of Socrata. The code has a generic `fetchArcGIS()` function — you just need to find the FeatureServer URL and fill in the field names.
+
+**Step-by-step to add an ArcGIS city:**
+
+1. **Find the open data portal.** Usually `opendata.[city].gov` or search "[city] open data portal".
+2. **Search "building permits"** and open the dataset page.
+3. **Get the FeatureServer URL.** Look for "I want to use this" / "API" / "View in ArcGIS" — copy the URL that ends in `.../FeatureServer`. It looks like:
+   `https://services1.arcgis.com/[ORG-ID]/arcgis/rest/services/[ServiceName]/FeatureServer`
+4. **Test it in your browser:** paste `[FeatureServer-URL]/0/query?where=1=1&outFields=*&resultRecordCount=1&f=json` and look at the `features[0].attributes` object to see the actual field names.
+5. **Uncomment or add a block in `ARCGIS_CITIES`** in [index.js](index.js), replacing the field names (`r.PermitNumber`, `r.SiteAddress`, etc.) with the actual ones from step 4.
+6. **Dates are Unix ms timestamps.** Use `new Date(r.IssueDate).toISOString().split('T')[0]` to convert.
+
+**Example entry:**
 
 ```js
-const res = await axios.get('https://[city-arcgis-server]/arcgis/rest/services/.../FeatureServer/0/query', {
-  params: {
-    where: '1=1',
-    outFields: 'permit_num,address,zip,permit_type,job_value,contractor,issue_date,status',
-    resultRecordCount: 1000,
-    orderByFields: 'issue_date DESC',
-    f: 'json',
-  },
-});
-// records are at res.data.features[].attributes
+houston: {
+  url: 'https://services1.arcgis.com/[ORG]/arcgis/rest/services/BuildingPermits/FeatureServer/0/query',
+  orderBy: 'IssueDate DESC',
+  normalize: (r) => ({
+    id: `houston-${r.PermitNumber || Math.random()}`,
+    city: 'houston',
+    address: r.SiteAddress || '',
+    permit_type: r.PermitType || '',
+    estimated_value: parseFloat(r.DeclaredValuation) || 0,
+    contractor_name: r.ContractorName || '',
+    permit_date: r.IssueDate ? new Date(r.IssueDate).toISOString().split('T')[0] : '',
+    status: r.Status || 'issued',
+    zip_code: r.ZipCode || '',
+    description: r.ProjectDescription || '',
+  }),
+},
 ```
 
 #### Priority Cities to Add (south of I-70)
 
-| City | State | Platform | Notes |
-|------|-------|----------|-------|
-| Houston | TX | ArcGIS | cohgis-mycity.opendata.arcgis.com |
-| Dallas | TX | ArcGIS | dallasopendata.com |
-| San Antonio | TX | ? | Check data.sanantonio.gov |
-| Phoenix | AZ | ArcGIS | phoenixopendata.com |
-| Tucson | AZ | ArcGIS | |
-| Nashville | TN | ArcGIS | data.nashville.gov redirects |
-| Charlotte | NC | ArcGIS | |
-| Raleigh | NC | ? | |
-| Atlanta | GA | ArcGIS | gis.atlantaga.gov |
-| Miami | FL | ArcGIS | |
-| Tampa | FL | ArcGIS | |
-| Jacksonville | FL | ? | |
-| Kansas City | MO | ? | data.kcmo.org |
-| Oklahoma City | OK | ? | |
-| Denver | CO | OpenDataSoft | Old Socrata endpoint broken |
-| Colorado Springs | CO | ? | |
-| Albuquerque | NM | ? | |
-| Birmingham | AL | ? | |
-| Los Angeles | CA | Socrata | 403 without app token |
-| San Diego | CA | ArcGIS | |
+| City | State | Platform | Portal | Status |
+|------|-------|----------|--------|--------|
+| Houston | TX | ArcGIS | cohgis-mycity.opendata.arcgis.com | Placeholder in code, needs URL |
+| Nashville | TN | ArcGIS | data.nashville.gov | Placeholder in code, needs URL |
+| Phoenix | AZ | ArcGIS | opendata.phoenix.gov | Placeholder in code, needs URL |
+| Charlotte | NC | ArcGIS | data.charlottenc.gov | Placeholder in code, needs URL |
+| Dallas | TX | ArcGIS | dallasopendata.com | Open data stale (stops 2019) |
+| San Antonio | TX | ? | data.sanantonio.gov | Not yet investigated |
+| Atlanta | GA | ArcGIS | gis.atlantaga.gov | Not yet investigated |
+| Miami | FL | ArcGIS | miamidade.gov/open | Not yet investigated |
+| Tampa | FL | ArcGIS | — | Not yet investigated |
+| Jacksonville | FL | ? | coj.net | Not yet investigated |
+| Oklahoma City | OK | ? | — | Not yet investigated |
+| Denver | CO | OpenDataSoft | denvergov.org/opendata | Old Socrata endpoint broken |
+| Albuquerque | NM | ? | cabq.gov/abq-data | Not yet investigated |
+| Birmingham | AL | ? | — | Not yet investigated |
+| Kansas City | MO | Socrata | data.kcmo.org | **Active** |
+| San Diego | CA | Socrata | internal-sandiegocounty.data.socrata.com | **Active** |
+| Los Angeles | CA | Socrata | data.lacity.org | 403 without app token |
 
 ---
 
